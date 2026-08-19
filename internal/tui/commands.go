@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gdamore/tcell/v2"
 	kzconfig "github.com/karoza/kz-git-user/internal/config"
 	kzgit "github.com/karoza/kz-git-user/internal/git"
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -101,10 +101,10 @@ func (c *commandInput) executeInput() {
 	}
 
 	if cmd, ok := c.commands[cmdName]; ok {
-		_, _ = fmt.Fprint(c.output, fmt.Sprintf("[#6C9EEB]> %s\n", c.input.GetText()))
+		_, _ = fmt.Fprintf(c.output, "[#6C9EEB]> %s\n", c.input.GetText())
 		cmd(args)
 	} else {
-		_, _ = fmt.Fprint(c.output, fmt.Sprintf("[#E06C75]Unknown command: %s\n", cmdName))
+		_, _ = fmt.Fprintf(c.output, "[#E06C75]Unknown command: %s\n", cmdName)
 		_, _ = fmt.Fprint(c.output, "[#6C7086]Type /help to see available commands\n")
 	}
 
@@ -147,7 +147,7 @@ func (c *commandInput) cmdHelp(_ string) {
 func (c *commandInput) cmdProfiles(_ string) {
 	cfg, err := kzconfig.Load()
 	if err != nil {
-		_, _ = fmt.Fprint(c.output, fmt.Sprintf("[#E06C75]Error loading config: %s\n", err.Error()))
+		_, _ = fmt.Fprintf(c.output, "[#E06C75]Error loading config: %s\n", err.Error())
 		return
 	}
 
@@ -159,7 +159,7 @@ func (c *commandInput) cmdProfiles(_ string) {
 
 	_, _ = fmt.Fprint(c.output, "[#6C9EEB::b]Saved Profiles:\n")
 	for _, p := range profiles {
-		_, _ = fmt.Fprint(c.output, fmt.Sprintf("  [white]%s [#6C7086]- %s\n", p.Name, p.Email))
+		_, _ = fmt.Fprintf(c.output, "  [white]%s [#6C7086]- %s\n", p.Name, p.Email)
 	}
 }
 
@@ -171,7 +171,7 @@ func (c *commandInput) cmdWhoami(_ string) {
 
 	identity, err := kzgit.ResolveIdentity(".")
 	if err != nil {
-		_, _ = fmt.Fprint(c.output, fmt.Sprintf("[#E06C75]Error: %s\n", err.Error()))
+		_, _ = fmt.Fprintf(c.output, "[#E06C75]Error: %s\n", err.Error())
 		return
 	}
 
@@ -185,9 +185,9 @@ func (c *commandInput) cmdWhoami(_ string) {
 	}
 
 	_, _ = fmt.Fprint(c.output, "[#6C9EEB::b]Current Identity:\n")
-	_, _ = fmt.Fprint(c.output, fmt.Sprintf("  [white]Name   : %s\n", nameVal))
-	_, _ = fmt.Fprint(c.output, fmt.Sprintf("  [white]Email  : %s\n", emailVal))
-	_, _ = fmt.Fprint(c.output, fmt.Sprintf("  [white]Source : %s\n", identitySource(identity)))
+	_, _ = fmt.Fprintf(c.output, "  [white]Name   : %s\n", nameVal)
+	_, _ = fmt.Fprintf(c.output, "  [white]Email  : %s\n", emailVal)
+	_, _ = fmt.Fprintf(c.output, "  [white]Source : %s\n", identitySource(identity))
 }
 
 func (c *commandInput) cmdSwitch(args string) {
@@ -211,26 +211,26 @@ func (c *commandInput) cmdSwitch(args string) {
 
 	cfg, err := kzconfig.Load()
 	if err != nil {
-		_, _ = fmt.Fprint(c.output, fmt.Sprintf("[#E06C75]Error loading config: %s\n", err.Error()))
+		_, _ = fmt.Fprintf(c.output, "[#E06C75]Error loading config: %s\n", err.Error())
 		return
 	}
 
 	profile, err := cfg.Get(name)
 	if err != nil {
-		_, _ = fmt.Fprint(c.output, fmt.Sprintf("[#E06C75]✗ Profile %q does not exist\n", name))
+		_, _ = fmt.Fprintf(c.output, "[#E06C75]✗ Profile %q does not exist\n", name)
 		_, _ = fmt.Fprint(c.output, "[#6C7086]Available profiles:\n")
 		for _, p := range cfg.List() {
-			_, _ = fmt.Fprint(c.output, fmt.Sprintf("  [white]%s\n", p.Name))
+			_, _ = fmt.Fprintf(c.output, "  [white]%s\n", p.Name)
 		}
 		return
 	}
 
 	if err := repo.SetLocalIdentity(profile.Name, profile.Email); err != nil {
-		_, _ = fmt.Fprint(c.output, fmt.Sprintf("[#E06C75]✗ Error applying profile: %s\n", err.Error()))
+		_, _ = fmt.Fprintf(c.output, "[#E06C75]✗ Error applying profile: %s\n", err.Error())
 		return
 	}
 
-	_, _ = fmt.Fprint(c.output, fmt.Sprintf("[#7EC87E]✓ Switched to profile %q (%s <%s>)\n", name, profile.Name, profile.Email))
+	_, _ = fmt.Fprintf(c.output, "[#7EC87E]✓ Switched to profile %q (%s <%s>)\n", name, profile.Name, profile.Email)
 }
 
 func (c *commandInput) cmdCheck(_ string) {
@@ -241,22 +241,22 @@ func (c *commandInput) cmdCheck(_ string) {
 
 	identity, err := kzgit.ResolveIdentity(".")
 	if err != nil {
-		_, _ = fmt.Fprint(c.output, fmt.Sprintf("[#E06C75]Error: %s\n", err.Error()))
+		_, _ = fmt.Fprintf(c.output, "[#E06C75]Error: %s\n", err.Error())
 		return
 	}
 
 	if identity.Email == "" {
 		_, _ = fmt.Fprint(c.output, "[#E06C75]✗ user.email is not set\n")
 	} else {
-		_, _ = fmt.Fprint(c.output, fmt.Sprintf("[#7EC87E]✓ user.email is set (%s)\n", identity.Email))
+		_, _ = fmt.Fprintf(c.output, "[#7EC87E]✓ user.email is set (%s)\n", identity.Email)
 	}
 
 	cfg, err := kzconfig.Load()
 	if err == nil && len(cfg.Rules.AllowedDomains) > 0 {
 		if identity.Email != "" && emailMatchesAnyDomain(identity.Email, cfg.Rules.AllowedDomains) {
-			_, _ = fmt.Fprint(c.output, fmt.Sprintf("[#7EC87E]✓ email domain is allowed (%s)\n", strings.Join(cfg.Rules.AllowedDomains, ", ")))
+			_, _ = fmt.Fprintf(c.output, "[#7EC87E]✓ email domain is allowed (%s)\n", strings.Join(cfg.Rules.AllowedDomains, ", "))
 		} else if identity.Email != "" {
-			_, _ = fmt.Fprint(c.output, fmt.Sprintf("[#E06C75]✗ email domain is not allowed (expected: %s)\n", strings.Join(cfg.Rules.AllowedDomains, ", ")))
+			_, _ = fmt.Fprintf(c.output, "[#E06C75]✗ email domain is not allowed (expected: %s)\n", strings.Join(cfg.Rules.AllowedDomains, ", "))
 		}
 	}
 }
@@ -276,17 +276,17 @@ func (c *commandInput) cmdStatus(_ string) {
 	commit, err := repo.LastCommit()
 	if err != nil {
 		_, _ = fmt.Fprint(c.output, "[#6C9EEB::b]Repository Status:\n")
-		_, _ = fmt.Fprint(c.output, fmt.Sprintf("  [white]Path   : %s\n", repo.Path))
-		_, _ = fmt.Fprint(c.output, fmt.Sprintf("  [white]Branch : %s\n", branch))
+		_, _ = fmt.Fprintf(c.output, "  [white]Path   : %s\n", repo.Path)
+		_, _ = fmt.Fprintf(c.output, "  [white]Branch : %s\n", branch)
 		_, _ = fmt.Fprint(c.output, "[#6C7086]No commits yet.\n")
 		return
 	}
 
 	_, _ = fmt.Fprint(c.output, "[#6C9EEB::b]Repository Status:\n")
-	_, _ = fmt.Fprint(c.output, fmt.Sprintf("  [white]Path   : %s\n", repo.Path))
-	_, _ = fmt.Fprint(c.output, fmt.Sprintf("  [white]Branch : %s\n", branch))
-	_, _ = fmt.Fprint(c.output, fmt.Sprintf("  [white]Author : %s\n", commit.Author))
-	_, _ = fmt.Fprint(c.output, fmt.Sprintf("  [white]Email  : %s\n", commit.Email))
+	_, _ = fmt.Fprintf(c.output, "  [white]Path   : %s\n", repo.Path)
+	_, _ = fmt.Fprintf(c.output, "  [white]Branch : %s\n", branch)
+	_, _ = fmt.Fprintf(c.output, "  [white]Author : %s\n", commit.Author)
+	_, _ = fmt.Fprintf(c.output, "  [white]Email  : %s\n", commit.Email)
 }
 
 func (c *commandInput) cmdQuit(_ string) {

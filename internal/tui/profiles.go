@@ -3,9 +3,9 @@ package tui
 import (
 	"fmt"
 
+	"github.com/gdamore/tcell/v2"
 	kzconfig "github.com/karoza/kz-git-user/internal/config"
 	kzgit "github.com/karoza/kz-git-user/internal/git"
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 

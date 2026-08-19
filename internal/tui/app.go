@@ -3,8 +3,8 @@ package tui
 import (
 	"fmt"
 
-	kzconfig "github.com/karoza/kz-git-user/internal/config"
 	"github.com/gdamore/tcell/v2"
+	kzconfig "github.com/karoza/kz-git-user/internal/config"
 	"github.com/rivo/tview"
 )
 
