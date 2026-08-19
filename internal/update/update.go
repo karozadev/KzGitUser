@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -21,23 +22,32 @@ const (
 	// checkInterval bounds how often Check will hit the GitHub API; within
 	// this window it serves the last known answer from an on-disk cache.
 	checkInterval = 24 * time.Hour
+
+	// releasesPerPage caps how many releases a single API call asks
+	// GitHub for. It's generous enough to cover realistic upgrade gaps
+	// (a user several versions behind) without needing pagination.
+	releasesPerPage = 100
 )
 
 // APIURL and ReleaseBaseURL are the GitHub endpoints used to look up and
 // download releases. They are variables (rather than constants) so tests
 // can point them at a local server.
 var (
-	APIURL         = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", repoOwner, repoName)
+	// APIURL lists releases (not just the latest one), so a user several
+	// versions behind gets a changelog covering every release in between,
+	// not just the newest one's.
+	APIURL         = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases?per_page=%d", repoOwner, repoName, releasesPerPage)
 	ReleaseBaseURL = fmt.Sprintf("https://github.com/%s/%s/releases/download", repoOwner, repoName)
 
-	// HTTPClient performs the small JSON API requests (checking the latest
-	// release), where a short timeout keeps a failed check from stalling
-	// routine commands.
-	HTTPClient = &http.Client{Timeout: 5 * time.Second}
+	// HTTPClient performs the small JSON API requests (checking releases).
+	// 10s gives real-world latency more headroom than a bare API call
+	// might seem to need, without letting a truly dead connection hang a
+	// routine command for long.
+	HTTPClient = &http.Client{Timeout: 10 * time.Second}
 
 	// DownloadClient performs the larger release-archive downloads, which
 	// need a much longer timeout than the API check — a multi-megabyte
-	// binary can easily take longer than 5s on a slow connection.
+	// binary can easily take longer than 10s on a slow connection.
 	DownloadClient = &http.Client{Timeout: 2 * time.Minute}
 )
 
@@ -51,17 +61,18 @@ type Info struct {
 
 // Check reports whether a newer kzgit release than current is available.
 // It consults an on-disk cache first and only queries GitHub if the cache
-// is missing or older than checkInterval, keeping routine calls (e.g. from
-// `kzgit whoami`) cheap and network-failure-tolerant.
+// is missing, stale, or was computed for a different current version,
+// keeping routine calls (e.g. from `kzgit whoami`) cheap and
+// network-failure-tolerant.
 func Check(current string) (Info, error) {
-	release, ok := cachedRelease()
+	release, ok := cachedRelease(current)
 	if !ok {
-		fetched, err := fetchLatest()
+		fetched, err := fetchRelease(current)
 		if err != nil {
 			return Info{}, err
 		}
 		release = fetched
-		_ = writeCache(release)
+		_ = writeCache(current, release)
 	}
 	return newInfo(current, release), nil
 }
@@ -69,11 +80,11 @@ func Check(current string) (Info, error) {
 // ForceCheck always queries GitHub for the latest release, bypassing the
 // cache, and refreshes the cache with the result.
 func ForceCheck(current string) (Info, error) {
-	release, err := fetchLatest()
+	release, err := fetchRelease(current)
 	if err != nil {
 		return Info{}, err
 	}
-	_ = writeCache(release)
+	_ = writeCache(current, release)
 	return newInfo(current, release), nil
 }
 
@@ -104,18 +115,26 @@ func trimV(v string) string {
 	return v
 }
 
-// releaseInfo is a released version paired with its GitHub release notes.
+// releaseInfo is a released version paired with its (possibly cumulative)
+// changelog.
 type releaseInfo struct {
 	Version string
 	Notes   string
 }
 
-type releaseResponse struct {
-	TagName string `json:"tag_name"`
-	Body    string `json:"body"`
+type githubRelease struct {
+	TagName    string `json:"tag_name"`
+	Body       string `json:"body"`
+	Draft      bool   `json:"draft"`
+	Prerelease bool   `json:"prerelease"`
 }
 
-func fetchLatest() (releaseInfo, error) {
+// fetchRelease lists every published, non-prerelease release and returns
+// the latest one's version alongside a changelog that concatenates every
+// release newer than current — not just the single newest release — so
+// someone upgrading across several versions sees everything that changed
+// along the way, oldest to newest.
+func fetchRelease(current string) (releaseInfo, error) {
 	req, err := http.NewRequest(http.MethodGet, APIURL, nil)
 	if err != nil {
 		return releaseInfo{}, err
@@ -132,18 +151,62 @@ func fetchLatest() (releaseInfo, error) {
 		return releaseInfo{}, fmt.Errorf("checking latest kzgit release: unexpected status %s", resp.Status)
 	}
 
-	var rel releaseResponse
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+	var all []githubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&all); err != nil {
 		return releaseInfo{}, fmt.Errorf("parsing release info: %w", err)
 	}
-	if rel.TagName == "" {
-		return releaseInfo{}, fmt.Errorf("no release tag found")
+
+	return aggregateReleases(all, current)
+}
+
+func aggregateReleases(all []githubRelease, current string) (releaseInfo, error) {
+	type versioned struct {
+		version string
+		body    string
 	}
-	return releaseInfo{Version: trimV(rel.TagName), Notes: rel.Body}, nil
+
+	var latest string
+	var newerThanCurrent []versioned
+
+	for _, r := range all {
+		if r.Draft || r.Prerelease {
+			continue
+		}
+		v := trimV(r.TagName)
+		tag := "v" + v
+		if !semver.IsValid(tag) {
+			continue
+		}
+		if latest == "" || semver.Compare(tag, "v"+latest) > 0 {
+			latest = v
+		}
+		if body := strings.TrimSpace(r.Body); isNewer(current, v) && body != "" {
+			newerThanCurrent = append(newerThanCurrent, versioned{version: v, body: body})
+		}
+	}
+
+	if latest == "" {
+		return releaseInfo{}, fmt.Errorf("no published releases found")
+	}
+
+	sort.Slice(newerThanCurrent, func(i, j int) bool {
+		return semver.Compare("v"+newerThanCurrent[i].version, "v"+newerThanCurrent[j].version) < 0
+	})
+
+	var notes strings.Builder
+	for i, e := range newerThanCurrent {
+		if i > 0 {
+			notes.WriteString("\n\n")
+		}
+		fmt.Fprintf(&notes, "## v%s\n%s", e.version, e.body)
+	}
+
+	return releaseInfo{Version: latest, Notes: notes.String()}, nil
 }
 
 type cacheData struct {
 	CheckedAt time.Time `json:"checkedAt"`
+	Current   string    `json:"current"`
 	Latest    string    `json:"latest"`
 	Notes     string    `json:"notes,omitempty"`
 }
@@ -159,7 +222,11 @@ func cachePath() (string, error) {
 	return filepath.Join(home, ".config", "kzgit", "update-check.json"), nil
 }
 
-func cachedRelease() (releaseInfo, bool) {
+// cachedRelease returns the cached release if it's fresh (within
+// checkInterval) and was computed for the same current version — a cached
+// changelog computed relative to a different version would be wrong, since
+// which releases count as "newer than current" depends on current itself.
+func cachedRelease(current string) (releaseInfo, bool) {
 	path, err := cachePath()
 	if err != nil {
 		return releaseInfo{}, false
@@ -172,13 +239,13 @@ func cachedRelease() (releaseInfo, bool) {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return releaseInfo{}, false
 	}
-	if time.Since(c.CheckedAt) > checkInterval || c.Latest == "" {
+	if time.Since(c.CheckedAt) > checkInterval || c.Latest == "" || c.Current != current {
 		return releaseInfo{}, false
 	}
 	return releaseInfo{Version: c.Latest, Notes: c.Notes}, true
 }
 
-func writeCache(release releaseInfo) error {
+func writeCache(current string, release releaseInfo) error {
 	path, err := cachePath()
 	if err != nil {
 		return err
@@ -186,7 +253,7 @@ func writeCache(release releaseInfo) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	data, err := json.Marshal(cacheData{CheckedAt: time.Now(), Latest: release.Version, Notes: release.Notes})
+	data, err := json.Marshal(cacheData{CheckedAt: time.Now(), Current: current, Latest: release.Version, Notes: release.Notes})
 	if err != nil {
 		return err
 	}

@@ -24,16 +24,27 @@ func isolatedEnv(t *testing.T) {
 	})
 }
 
+// newReleaseServer serves a single release (as GitHub's /releases list
+// endpoint would, as a one-element JSON array) at the given tag with no
+// notes.
 func newReleaseServer(t *testing.T, tag string) *httptest.Server {
 	t.Helper()
-	return newReleaseServerWithNotes(t, tag, "")
+	return newReleasesServer(t, githubRelease{TagName: tag})
 }
 
+// newReleaseServerWithNotes serves a single release with a body.
 func newReleaseServerWithNotes(t *testing.T, tag, notes string) *httptest.Server {
+	t.Helper()
+	return newReleasesServer(t, githubRelease{TagName: tag, Body: notes})
+}
+
+// newReleasesServer serves the given releases as GitHub's /releases list
+// endpoint would: a JSON array, in the order given.
+func newReleasesServer(t *testing.T, releases ...githubRelease) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(releaseResponse{TagName: tag, Body: notes})
+		_ = json.NewEncoder(w).Encode(releases)
 	}))
 	t.Cleanup(srv.Close)
 	return srv
@@ -65,7 +76,7 @@ func TestCheck_CarriesReleaseNotes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Check: %v", err)
 	}
-	if info.ReleaseNotes != "## What's new\n- feat: self-update" {
+	if info.ReleaseNotes != "## v0.2.0\n## What's new\n- feat: self-update" {
 		t.Fatalf("unexpected release notes: %q", info.ReleaseNotes)
 	}
 }
@@ -83,8 +94,85 @@ func TestCheck_ReleaseNotesSurviveCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Check: %v", err)
 	}
-	if info.ReleaseNotes != "release notes here" {
+	if info.ReleaseNotes != "## v0.2.0\nrelease notes here" {
 		t.Fatalf("expected cached release notes, got %q", info.ReleaseNotes)
+	}
+}
+
+func TestCheck_CacheInvalidatedByDifferentCurrent(t *testing.T) {
+	isolatedEnv(t)
+	calls := 0
+	srv := newCountingReleasesServer(t, &calls, githubRelease{TagName: "v0.3.0"})
+	APIURL = srv.URL
+
+	if _, err := Check("0.1.0"); err != nil {
+		t.Fatalf("first Check: %v", err)
+	}
+	// A different "current" invalidates the cache, since which releases
+	// count as "newer" (and thus the changelog) depends on it.
+	if _, err := Check("0.2.0"); err != nil {
+		t.Fatalf("second Check: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("expected a fresh fetch when current changes, got %d calls", calls)
+	}
+}
+
+func TestAggregateReleases_CumulativeAcrossVersions(t *testing.T) {
+	releases := []githubRelease{
+		{TagName: "v0.3.0", Body: "changelog for 0.3.0"},
+		{TagName: "v0.2.0", Body: "changelog for 0.2.0"},
+		{TagName: "v0.1.0", Body: "changelog for 0.1.0"},
+	}
+
+	release, err := aggregateReleases(releases, "0.1.0")
+	if err != nil {
+		t.Fatalf("aggregateReleases: %v", err)
+	}
+	if release.Version != "0.3.0" {
+		t.Fatalf("expected latest=0.3.0, got %q", release.Version)
+	}
+
+	want := "## v0.2.0\nchangelog for 0.2.0\n\n## v0.3.0\nchangelog for 0.3.0"
+	if release.Notes != want {
+		t.Fatalf("expected cumulative, oldest-first changelog:\nwant: %q\ngot:  %q", want, release.Notes)
+	}
+}
+
+func TestAggregateReleases_SkipsDraftsAndPrereleases(t *testing.T) {
+	releases := []githubRelease{
+		{TagName: "v0.3.0", Body: "stable"},
+		{TagName: "v0.4.0-beta.1", Body: "beta", Prerelease: true},
+		{TagName: "v0.5.0", Body: "unpublished draft", Draft: true},
+	}
+
+	release, err := aggregateReleases(releases, "0.1.0")
+	if err != nil {
+		t.Fatalf("aggregateReleases: %v", err)
+	}
+	if release.Version != "0.3.0" {
+		t.Fatalf("expected drafts/prereleases to be skipped, latest should be 0.3.0, got %q", release.Version)
+	}
+}
+
+func TestAggregateReleases_NoPublishedReleases(t *testing.T) {
+	_, err := aggregateReleases(nil, "0.1.0")
+	if err == nil {
+		t.Fatal("expected an error when there are no published releases")
+	}
+}
+
+func TestAggregateReleases_IgnoresMalformedTags(t *testing.T) {
+	releases := []githubRelease{
+		{TagName: "not-a-version"},
+		{TagName: "v0.2.0", Body: "ok release"},
+	}
+	release, err := aggregateReleases(releases, "0.1.0")
+	if err != nil {
+		t.Fatalf("aggregateReleases: %v", err)
+	}
+	if release.Version != "0.2.0" {
+		t.Fatalf("expected malformed tags to be ignored, got %q", release.Version)
 	}
 }
 
@@ -116,15 +204,21 @@ func TestCheck_DevAlwaysOutdated(t *testing.T) {
 	}
 }
 
+func newCountingReleasesServer(t *testing.T, calls *int, releases ...githubRelease) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*calls++
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(releases)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 func TestCheck_UsesCacheWithinInterval(t *testing.T) {
 	isolatedEnv(t)
 	calls := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(releaseResponse{TagName: "v0.2.0"})
-	}))
-	t.Cleanup(srv.Close)
+	srv := newCountingReleasesServer(t, &calls, githubRelease{TagName: "v0.2.0"})
 	APIURL = srv.URL
 
 	if _, err := Check("0.1.0"); err != nil {
@@ -141,12 +235,7 @@ func TestCheck_UsesCacheWithinInterval(t *testing.T) {
 func TestForceCheck_BypassesCache(t *testing.T) {
 	isolatedEnv(t)
 	calls := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(releaseResponse{TagName: "v0.2.0"})
-	}))
-	t.Cleanup(srv.Close)
+	srv := newCountingReleasesServer(t, &calls, githubRelease{TagName: "v0.2.0"})
 	APIURL = srv.URL
 
 	if _, err := Check("0.1.0"); err != nil {
@@ -192,7 +281,7 @@ func TestWriteCache_MkdirAllError(t *testing.T) {
 	}
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
-	if err := writeCache(releaseInfo{Version: "0.1.0"}); err == nil {
+	if err := writeCache("0.1.0", releaseInfo{Version: "0.1.0"}); err == nil {
 		t.Fatal("expected an error when the cache directory can't be created")
 	}
 }
@@ -210,7 +299,7 @@ func TestCachedRelease_CorruptedCache(t *testing.T) {
 		t.Fatalf("write corrupted cache: %v", err)
 	}
 
-	_, ok := cachedRelease()
+	_, ok := cachedRelease("0.1.0")
 	if ok {
 		t.Fatal("expected no cached release for a corrupted cache file")
 	}
@@ -218,7 +307,7 @@ func TestCachedRelease_CorruptedCache(t *testing.T) {
 
 func TestCachedRelease_Stale(t *testing.T) {
 	isolatedEnv(t)
-	if err := writeCache(releaseInfo{Version: "0.5.0"}); err != nil {
+	if err := writeCache("0.1.0", releaseInfo{Version: "0.5.0"}); err != nil {
 		t.Fatalf("writeCache: %v", err)
 	}
 
@@ -227,7 +316,7 @@ func TestCachedRelease_Stale(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cachePath: %v", err)
 	}
-	data, err := json.Marshal(cacheData{CheckedAt: time.Now().Add(-48 * time.Hour), Latest: "0.5.0"})
+	data, err := json.Marshal(cacheData{CheckedAt: time.Now().Add(-48 * time.Hour), Current: "0.1.0", Latest: "0.5.0"})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -235,25 +324,39 @@ func TestCachedRelease_Stale(t *testing.T) {
 		t.Fatalf("write stale cache: %v", err)
 	}
 
-	_, ok := cachedRelease()
+	_, ok := cachedRelease("0.1.0")
 	if ok {
 		t.Fatal("expected a stale cache to be ignored")
 	}
 }
 
-func TestFetchLatest_Unreachable(t *testing.T) {
+func TestCachedRelease_DifferentCurrent(t *testing.T) {
+	isolatedEnv(t)
+	if err := writeCache("0.1.0", releaseInfo{Version: "0.5.0"}); err != nil {
+		t.Fatalf("writeCache: %v", err)
+	}
+
+	if _, ok := cachedRelease("0.2.0"); ok {
+		t.Fatal("expected a cache entry computed for a different 'current' to be rejected")
+	}
+	if _, ok := cachedRelease("0.1.0"); !ok {
+		t.Fatal("expected the cache entry to be valid for the version it was computed for")
+	}
+}
+
+func TestFetchRelease_Unreachable(t *testing.T) {
 	isolatedEnv(t)
 	APIURL = "http://127.0.0.1:1/unreachable"
 	origClient := HTTPClient
 	HTTPClient = &http.Client{Timeout: 500 * time.Millisecond}
 	t.Cleanup(func() { HTTPClient = origClient })
 
-	if _, err := fetchLatest(); err == nil {
+	if _, err := fetchRelease("0.1.0"); err == nil {
 		t.Fatal("expected an error when the release API is unreachable")
 	}
 }
 
-func TestFetchLatest_MalformedJSON(t *testing.T) {
+func TestFetchRelease_MalformedJSON(t *testing.T) {
 	isolatedEnv(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("not json"))
@@ -261,18 +364,18 @@ func TestFetchLatest_MalformedJSON(t *testing.T) {
 	t.Cleanup(srv.Close)
 	APIURL = srv.URL
 
-	if _, err := fetchLatest(); err == nil {
+	if _, err := fetchRelease("0.1.0"); err == nil {
 		t.Fatal("expected an error for a malformed JSON response")
 	}
 }
 
-func TestFetchLatest_EmptyTagName(t *testing.T) {
+func TestFetchRelease_NoReleases(t *testing.T) {
 	isolatedEnv(t)
-	srv := newReleaseServer(t, "")
+	srv := newReleasesServer(t)
 	APIURL = srv.URL
 
-	if _, err := fetchLatest(); err == nil {
-		t.Fatal("expected an error for an empty tag_name")
+	if _, err := fetchRelease("0.1.0"); err == nil {
+		t.Fatal("expected an error when there are no releases at all")
 	}
 }
 

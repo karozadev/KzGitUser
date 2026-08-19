@@ -21,9 +21,11 @@ func isolatedUpdateEnv(t *testing.T, tag string) {
 
 func isolatedUpdateEnvWithNotes(t *testing.T, tag, notes string) {
 	t.Helper()
+	// internal/update's APIURL now points at GitHub's /releases list
+	// endpoint, which returns a JSON array rather than a single object.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"tag_name": tag, "body": notes})
+		_ = json.NewEncoder(w).Encode([]map[string]string{{"tag_name": tag, "body": notes}})
 	}))
 	t.Cleanup(srv.Close)
 
