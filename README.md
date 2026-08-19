@@ -24,6 +24,7 @@ Most developers juggle several Git identities: a work email, a personal one, may
 - **`kzgit profiles`** — save, list, and remove named identity profiles.
 - **`kzgit switch <profile>`** — apply a saved profile to the current repository's local config in one command.
 - **`kzgit check`** — validate the active identity (email set, optionally restricted to allowed domains); exit code friendly for hooks and CI.
+- **`kzgit update`** — self-updates to the latest release, with a zsh-style prompt shown automatically when one is available.
 - Respects Git's real config precedence (environment variables → local → global → system) instead of reimplementing it.
 - Single static binary, no runtime dependencies beyond `git` itself.
 
@@ -223,6 +224,30 @@ kzgit check --domain company.com || exit 1
 ```
 
 You can also persist allowed domains in the KzGitUser config under a `rules.allowedDomains` array, so plain `kzgit check` enforces them without flags.
+
+### `kzgit update`
+
+Keeps `kzgit` itself up to date, similar to how zsh frameworks prompt you when a new version is out. Two ways it shows up:
+
+- **On demand**: `kzgit update` checks GitHub for the latest release and, if one is available, asks for confirmation before installing it in place of the running binary (checksum-verified against the release's `checksums.txt`).
+- **Automatically, at a glance**: when you run `kzgit` (the TUI) or `kzgit whoami` from an interactive terminal, kzgit does a lightweight, cached check (at most once every 24h) and offers the same prompt if a newer release exists.
+
+```text
+$ kzgit whoami
+...
+A new version of kzgit is available: v0.2.0 (you have v0.1.0).
+Update now? [Y/n] y
+Downloading kzgit v0.2.0...
+Updated to kzgit v0.2.0. This takes effect the next time you run kzgit.
+```
+
+```bash
+kzgit update            # check and prompt before installing
+kzgit update --yes      # install without prompting
+kzgit update --check    # just report whether an update is available
+```
+
+The automatic check never runs in a non-interactive context (pipes, hooks, CI), and can be disabled entirely with `KZGIT_NO_UPDATE_CHECK=1`.
 
 ## Open Source
 

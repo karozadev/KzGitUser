@@ -22,6 +22,7 @@ Run 'kzgit' without arguments to launch the interactive TUI.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			offerUpdateIfAvailable(cmd)
 			app := tui.NewApp()
 			return app.Run()
 		},
@@ -32,6 +33,7 @@ Run 'kzgit' without arguments to launch the interactive TUI.`,
 	root.AddCommand(newProfilesCmd())
 	root.AddCommand(newSwitchCmd())
 	root.AddCommand(newCheckCmd())
+	root.AddCommand(newUpdateCmd())
 	root.AddCommand(newUICmd())
 
 	return root

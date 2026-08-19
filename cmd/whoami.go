@@ -24,6 +24,7 @@ func runWhoami(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	_, _ = fmt.Fprint(cmd.OutOrStdout(), out)
+	offerUpdateIfAvailable(cmd)
 	return nil
 }
 
