@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"strings"
 
 	kzupdate "github.com/karoza/kz-git-user/internal/update"
@@ -46,6 +47,7 @@ func runUpdate(cmd *cobra.Command, yes, checkOnly bool) error {
 	}
 
 	_, _ = fmt.Fprintf(out, "A new version of kzgit is available: v%s (current: %s)\n", info.Latest, versionLabel(current))
+	printReleaseNotes(out, info.ReleaseNotes)
 
 	if checkOnly {
 		_, _ = fmt.Fprintln(out, "Run 'kzgit update' to install it.")
@@ -86,6 +88,19 @@ func versionLabel(current string) string {
 		return "dev"
 	}
 	return "v" + current
+}
+
+// printReleaseNotes prints a release's changelog (as published in its
+// GitHub release body) indented under a "Changelog:" heading. It is a
+// no-op when notes is empty, e.g. for a release with no generated notes.
+func printReleaseNotes(out io.Writer, notes string) {
+	if notes == "" {
+		return
+	}
+	_, _ = fmt.Fprintln(out, "\nChangelog:")
+	for _, line := range strings.Split(notes, "\n") {
+		_, _ = fmt.Fprintf(out, "  %s\n", line)
+	}
 }
 
 // confirm prints a yes/no prompt and reads a single line from cmd's input,

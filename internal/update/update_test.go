@@ -26,9 +26,14 @@ func isolatedEnv(t *testing.T) {
 
 func newReleaseServer(t *testing.T, tag string) *httptest.Server {
 	t.Helper()
+	return newReleaseServerWithNotes(t, tag, "")
+}
+
+func newReleaseServerWithNotes(t *testing.T, tag, notes string) *httptest.Server {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(releaseResponse{TagName: tag})
+		_ = json.NewEncoder(w).Encode(releaseResponse{TagName: tag, Body: notes})
 	}))
 	t.Cleanup(srv.Close)
 	return srv
@@ -48,6 +53,38 @@ func TestCheck_NewerAvailable(t *testing.T) {
 	}
 	if info.Latest != "0.2.0" {
 		t.Fatalf("expected latest=0.2.0, got %q", info.Latest)
+	}
+}
+
+func TestCheck_CarriesReleaseNotes(t *testing.T) {
+	isolatedEnv(t)
+	srv := newReleaseServerWithNotes(t, "v0.2.0", "  ## What's new\n- feat: self-update\n  ")
+	APIURL = srv.URL
+
+	info, err := Check("0.1.0")
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if info.ReleaseNotes != "## What's new\n- feat: self-update" {
+		t.Fatalf("unexpected release notes: %q", info.ReleaseNotes)
+	}
+}
+
+func TestCheck_ReleaseNotesSurviveCache(t *testing.T) {
+	isolatedEnv(t)
+	srv := newReleaseServerWithNotes(t, "v0.2.0", "release notes here")
+	APIURL = srv.URL
+
+	if _, err := Check("0.1.0"); err != nil {
+		t.Fatalf("first Check: %v", err)
+	}
+	// Second call is served from cache; notes should still be present.
+	info, err := Check("0.1.0")
+	if err != nil {
+		t.Fatalf("second Check: %v", err)
+	}
+	if info.ReleaseNotes != "release notes here" {
+		t.Fatalf("expected cached release notes, got %q", info.ReleaseNotes)
 	}
 }
 
@@ -155,12 +192,12 @@ func TestWriteCache_MkdirAllError(t *testing.T) {
 	}
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
-	if err := writeCache("0.1.0"); err == nil {
+	if err := writeCache(releaseInfo{Version: "0.1.0"}); err == nil {
 		t.Fatal("expected an error when the cache directory can't be created")
 	}
 }
 
-func TestCachedLatest_CorruptedCache(t *testing.T) {
+func TestCachedRelease_CorruptedCache(t *testing.T) {
 	isolatedEnv(t)
 	path, err := cachePath()
 	if err != nil {
@@ -173,18 +210,15 @@ func TestCachedLatest_CorruptedCache(t *testing.T) {
 		t.Fatalf("write corrupted cache: %v", err)
 	}
 
-	latest, err := cachedLatest()
-	if err != nil {
-		t.Fatalf("cachedLatest: %v", err)
-	}
-	if latest != "" {
-		t.Fatalf("expected empty result for a corrupted cache, got %q", latest)
+	_, ok := cachedRelease()
+	if ok {
+		t.Fatal("expected no cached release for a corrupted cache file")
 	}
 }
 
-func TestCachedLatest_Stale(t *testing.T) {
+func TestCachedRelease_Stale(t *testing.T) {
 	isolatedEnv(t)
-	if err := writeCache("0.5.0"); err != nil {
+	if err := writeCache(releaseInfo{Version: "0.5.0"}); err != nil {
 		t.Fatalf("writeCache: %v", err)
 	}
 
@@ -201,12 +235,9 @@ func TestCachedLatest_Stale(t *testing.T) {
 		t.Fatalf("write stale cache: %v", err)
 	}
 
-	latest, err := cachedLatest()
-	if err != nil {
-		t.Fatalf("cachedLatest: %v", err)
-	}
-	if latest != "" {
-		t.Fatalf("expected a stale cache to be ignored, got %q", latest)
+	_, ok := cachedRelease()
+	if ok {
+		t.Fatal("expected a stale cache to be ignored")
 	}
 }
 

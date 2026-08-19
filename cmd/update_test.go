@@ -11,14 +11,19 @@ import (
 )
 
 // isolatedUpdateEnv points internal/update's API endpoint at a local server
-// returning tag, restoring the real endpoint on cleanup. It relies on
-// isolatedEnv (in testutil_test.go) already having redirected the cache
-// location via XDG_CONFIG_HOME.
+// returning tag (and optional release notes), restoring the real endpoint
+// on cleanup. It relies on isolatedEnv (in testutil_test.go) already having
+// redirected the cache location via XDG_CONFIG_HOME.
 func isolatedUpdateEnv(t *testing.T, tag string) {
+	t.Helper()
+	isolatedUpdateEnvWithNotes(t, tag, "")
+}
+
+func isolatedUpdateEnvWithNotes(t *testing.T, tag, notes string) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"tag_name": tag})
+		_ = json.NewEncoder(w).Encode(map[string]string{"tag_name": tag, "body": notes})
 	}))
 	t.Cleanup(srv.Close)
 
@@ -55,6 +60,35 @@ func TestUpdate_CheckOnly(t *testing.T) {
 	}
 	if !strings.Contains(out, "Run 'kzgit update'") {
 		t.Fatalf("expected --check to stop short of installing, got:\n%s", out)
+	}
+}
+
+func TestUpdate_ShowsChangelog(t *testing.T) {
+	isolatedEnv(t)
+	isolatedUpdateEnvWithNotes(t, "v99.0.0", "- feat: added self-update\n- fix: lint")
+
+	out, err := execCmd(t, "update", "--check")
+	if err != nil {
+		t.Fatalf("update --check: %v", err)
+	}
+	if !strings.Contains(out, "Changelog:") {
+		t.Fatalf("expected a Changelog section, got:\n%s", out)
+	}
+	if !strings.Contains(out, "feat: added self-update") || !strings.Contains(out, "fix: lint") {
+		t.Fatalf("expected changelog entries, got:\n%s", out)
+	}
+}
+
+func TestUpdate_NoChangelogWhenNotesEmpty(t *testing.T) {
+	isolatedEnv(t)
+	isolatedUpdateEnvWithNotes(t, "v99.0.0", "")
+
+	out, err := execCmd(t, "update", "--check")
+	if err != nil {
+		t.Fatalf("update --check: %v", err)
+	}
+	if strings.Contains(out, "Changelog:") {
+		t.Fatalf("expected no Changelog section for empty release notes, got:\n%s", out)
 	}
 }
 

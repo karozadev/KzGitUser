@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/mod/semver"
@@ -35,9 +36,10 @@ var (
 
 // Info describes the outcome of an update check.
 type Info struct {
-	Current   string
-	Latest    string
-	Available bool
+	Current      string
+	Latest       string
+	Available    bool
+	ReleaseNotes string
 }
 
 // Check reports whether a newer kzgit release than current is available.
@@ -45,33 +47,35 @@ type Info struct {
 // is missing or older than checkInterval, keeping routine calls (e.g. from
 // `kzgit whoami`) cheap and network-failure-tolerant.
 func Check(current string) (Info, error) {
-	latest, err := cachedLatest()
-	if err != nil || latest == "" {
-		latest, err = fetchLatest()
+	release, ok := cachedRelease()
+	if !ok {
+		fetched, err := fetchLatest()
 		if err != nil {
 			return Info{}, err
 		}
-		_ = writeCache(latest)
+		release = fetched
+		_ = writeCache(release)
 	}
-	return newInfo(current, latest), nil
+	return newInfo(current, release), nil
 }
 
 // ForceCheck always queries GitHub for the latest release, bypassing the
 // cache, and refreshes the cache with the result.
 func ForceCheck(current string) (Info, error) {
-	latest, err := fetchLatest()
+	release, err := fetchLatest()
 	if err != nil {
 		return Info{}, err
 	}
-	_ = writeCache(latest)
-	return newInfo(current, latest), nil
+	_ = writeCache(release)
+	return newInfo(current, release), nil
 }
 
-func newInfo(current, latest string) Info {
+func newInfo(current string, release releaseInfo) Info {
 	return Info{
-		Current:   current,
-		Latest:    latest,
-		Available: isNewer(current, latest),
+		Current:      current,
+		Latest:       release.Version,
+		Available:    isNewer(current, release.Version),
+		ReleaseNotes: strings.TrimSpace(release.Notes),
 	}
 }
 
@@ -93,40 +97,48 @@ func trimV(v string) string {
 	return v
 }
 
-type releaseResponse struct {
-	TagName string `json:"tag_name"`
+// releaseInfo is a released version paired with its GitHub release notes.
+type releaseInfo struct {
+	Version string
+	Notes   string
 }
 
-func fetchLatest() (string, error) {
+type releaseResponse struct {
+	TagName string `json:"tag_name"`
+	Body    string `json:"body"`
+}
+
+func fetchLatest() (releaseInfo, error) {
 	req, err := http.NewRequest(http.MethodGet, APIURL, nil)
 	if err != nil {
-		return "", err
+		return releaseInfo{}, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := HTTPClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("checking latest kzgit release: %w", err)
+		return releaseInfo{}, fmt.Errorf("checking latest kzgit release: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("checking latest kzgit release: unexpected status %s", resp.Status)
+		return releaseInfo{}, fmt.Errorf("checking latest kzgit release: unexpected status %s", resp.Status)
 	}
 
 	var rel releaseResponse
 	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		return "", fmt.Errorf("parsing release info: %w", err)
+		return releaseInfo{}, fmt.Errorf("parsing release info: %w", err)
 	}
 	if rel.TagName == "" {
-		return "", fmt.Errorf("no release tag found")
+		return releaseInfo{}, fmt.Errorf("no release tag found")
 	}
-	return trimV(rel.TagName), nil
+	return releaseInfo{Version: trimV(rel.TagName), Notes: rel.Body}, nil
 }
 
 type cacheData struct {
 	CheckedAt time.Time `json:"checkedAt"`
 	Latest    string    `json:"latest"`
+	Notes     string    `json:"notes,omitempty"`
 }
 
 func cachePath() (string, error) {
@@ -140,26 +152,26 @@ func cachePath() (string, error) {
 	return filepath.Join(home, ".config", "kzgit", "update-check.json"), nil
 }
 
-func cachedLatest() (string, error) {
+func cachedRelease() (releaseInfo, bool) {
 	path, err := cachePath()
 	if err != nil {
-		return "", err
+		return releaseInfo{}, false
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", nil
+		return releaseInfo{}, false
 	}
 	var c cacheData
 	if err := json.Unmarshal(data, &c); err != nil {
-		return "", nil
+		return releaseInfo{}, false
 	}
-	if time.Since(c.CheckedAt) > checkInterval {
-		return "", nil
+	if time.Since(c.CheckedAt) > checkInterval || c.Latest == "" {
+		return releaseInfo{}, false
 	}
-	return c.Latest, nil
+	return releaseInfo{Version: c.Latest, Notes: c.Notes}, true
 }
 
-func writeCache(latest string) error {
+func writeCache(release releaseInfo) error {
 	path, err := cachePath()
 	if err != nil {
 		return err
@@ -167,7 +179,7 @@ func writeCache(latest string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	data, err := json.Marshal(cacheData{CheckedAt: time.Now(), Latest: latest})
+	data, err := json.Marshal(cacheData{CheckedAt: time.Now(), Latest: release.Version, Notes: release.Notes})
 	if err != nil {
 		return err
 	}

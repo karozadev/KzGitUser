@@ -32,6 +32,7 @@ func offerUpdateIfAvailable(cmd *cobra.Command) {
 
 	out := cmd.OutOrStdout()
 	_, _ = fmt.Fprintf(out, "\nA new version of kzgit is available: v%s (you have v%s).\n", info.Latest, info.Current)
+	printReleaseNotes(out, info.ReleaseNotes)
 
 	confirmed, err := confirm(cmd, "Update now?")
 	if err != nil {
