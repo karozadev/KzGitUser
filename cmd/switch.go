@@ -10,9 +10,10 @@ import (
 
 func newSwitchCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "switch <profile>",
-		Short: "Apply a saved profile to the current repository",
-		Args:  cobra.ExactArgs(1),
+		Use:               "switch <profile>",
+		Short:             "Apply a saved profile to the current repository",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeProfileNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSwitch(cmd, args[0])
 		},

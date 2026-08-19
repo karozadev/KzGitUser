@@ -257,6 +257,37 @@ kzgit update --check    # just report whether an update is available
 
 The automatic check never runs in a non-interactive context (pipes, hooks, CI), and can be disabled entirely with `KZGIT_NO_UPDATE_CHECK=1`.
 
+## Shell completion
+
+`kzgit` can generate tab-completion scripts for bash, zsh, fish, and PowerShell (`kzgit switch <TAB>` and `kzgit profiles remove <TAB>` even complete your saved profile names).
+
+**zsh:**
+
+```bash
+mkdir -p "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/completions" 2>/dev/null
+kzgit completion zsh > "${fpath[1]:-$HOME/.zsh/completions}/_kzgit"
+# or, without oh-my-zsh:
+mkdir -p ~/.zsh/completions && kzgit completion zsh > ~/.zsh/completions/_kzgit
+# make sure ~/.zsh/completions is on $fpath, then in ~/.zshrc:
+autoload -Uz compinit && compinit
+```
+
+**bash:**
+
+```bash
+kzgit completion bash > /etc/bash_completion.d/kzgit   # system-wide
+# or
+kzgit completion bash > ~/.local/share/bash-completion/completions/kzgit
+```
+
+**fish:**
+
+```bash
+kzgit completion fish > ~/.config/fish/completions/kzgit.fish
+```
+
+Run `kzgit completion --help` (or `kzgit completion <shell> --help`) for shell-specific details.
+
 ## Open Source
 
 KzGitUser is open source under the [MIT License](LICENSE). Issues, feature requests, and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for how to get started.

@@ -50,10 +50,11 @@ func newProfilesListCmd() *cobra.Command {
 
 func newProfilesRemoveCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:     "remove <profile>",
-		Aliases: []string{"rm", "delete"},
-		Short:   "Remove a saved profile",
-		Args:    cobra.ExactArgs(1),
+		Use:               "remove <profile>",
+		Aliases:           []string{"rm", "delete"},
+		Short:             "Remove a saved profile",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeProfileNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runProfilesRemove(cmd, args[0])
 		},
