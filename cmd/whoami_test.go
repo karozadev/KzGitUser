@@ -63,12 +63,12 @@ func TestWhoamiCommand_RootAlias(t *testing.T) {
 	run(t, dir, "config", "--local", "user.name", "Jane Doe")
 	run(t, dir, "config", "--local", "user.email", "jane@company.com")
 
-	out, err := execCmd(t)
+	out, err := execCmd(t, "whoami")
 	if err != nil {
 		t.Fatalf("execCmd: %v", err)
 	}
 	if !strings.Contains(out, "jane@company.com") {
-		t.Fatalf("expected root command to behave like whoami, got:\n%s", out)
+		t.Fatalf("expected whoami output, got:\n%s", out)
 	}
 }
 

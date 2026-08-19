@@ -1,5 +1,9 @@
 <!-- markdownlint-disable MD033 MD041 -->
-<h1>KzGitUser (kzgit)</h1>
+<p align="center">
+  <img src="image/logo.png" alt="KzGitUser Logo" width="400">
+</p>
+
+<h1 align="center">KzGitUser (kzgit)</h1>
 
 [![CI](https://github.com/karozadev/KzGitUser/actions/workflows/ci.yml/badge.svg)](https://github.com/karozadev/KzGitUser/actions/workflows/ci.yml)
 [![Tests](https://github.com/karozadev/KzGitUser/actions/workflows/ci.yml/badge.svg?event=push)](https://github.com/karozadev/KzGitUser/actions/workflows/ci.yml)
@@ -15,6 +19,7 @@ Most developers juggle several Git identities: a work email, a personal one, may
 
 ## Features
 
+- **`kzgit ui`** — launch the interactive Terminal User Interface (TUI) for managing Git identities visually.
 - **`kzgit whoami`** — see exactly which identity is active, and where it comes from (local, global, system, or an environment variable).
 - **`kzgit profiles`** — save, list, and remove named identity profiles.
 - **`kzgit switch <profile>`** — apply a saved profile to the current repository's local config in one command.
@@ -42,6 +47,47 @@ Last Commit
 Author : John Doe
 Email  : john@company.com
 ```
+
+### TUI Interface
+
+Launch the interactive TUI with:
+
+```bash
+kzgit ui
+```
+
+Or simply run `kzgit` without arguments to open the TUI directly.
+
+The TUI provides:
+
+- **Dashboard** — View your current Git identity, repository info, and last commit at a glance
+- **Profile Management** — Create, switch, and delete profiles with keyboard shortcuts
+- **Command Mode** — Type commands like `/help`, `/switch work`, `/check` for quick actions
+- **Autocomplete** — Tab-complete command names as you type
+
+#### Dashboard
+
+![Dashboard](image/1.PNG)
+
+#### Add Profile
+
+![Add Profile](image/2%20add.PNG)
+
+#### Command Mode
+
+![Command Mode](image/3%20cmd.PNG)
+
+#### Keyboard Shortcuts
+
+| Key | Action |
+| --- | --- |
+| `1-3` | Switch between pages |
+| `j/k` | Navigate lists |
+| `Enter` | Select/Confirm |
+| `Esc` | Back/Close |
+| `/` | Command mode |
+| `?` | Help |
+| `q` | Quit |
 
 ## Installation
 
@@ -93,6 +139,27 @@ kzgit whoami
 | Windows |  ✅   |  ✅   |
 
 ## Usage
+
+### Interactive TUI
+
+The fastest way to get started is with the interactive TUI:
+
+```bash
+kzgit
+# or
+kzgit ui
+```
+
+The TUI opens a visual dashboard where you can:
+
+- View your current Git identity and repository info
+- Navigate between pages (dashboard, profiles, commands)
+- Manage profiles with keyboard shortcuts
+- Execute commands by typing `/command`
+
+### CLI Commands
+
+For scripting and automation, use the CLI commands directly:
 
 ### `kzgit whoami`
 
