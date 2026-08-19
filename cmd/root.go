@@ -35,6 +35,7 @@ Run 'kzgit' without arguments to launch the interactive TUI.`,
 	root.AddCommand(newCheckCmd())
 	root.AddCommand(newUpdateCmd())
 	root.AddCommand(newUICmd())
+	root.AddCommand(newStatsCmd())
 
 	return root
 }

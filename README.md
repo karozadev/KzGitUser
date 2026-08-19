@@ -25,6 +25,7 @@ Most developers juggle several Git identities: a work email, a personal one, may
 - **`kzgit switch <profile>`** — apply a saved profile to the current repository's local config in one command.
 - **`kzgit check`** — validate the active identity (email set, optionally restricted to allowed domains); exit code friendly for hooks and CI.
 - **`kzgit update`** — self-updates to the latest release, with a zsh-style prompt shown automatically when one is available.
+- **`kzgit stats`** — a GitHub-style commit contribution heatmap in your terminal, scoped to a profile, built by scanning Git repositories in parallel.
 - Respects Git's real config precedence (environment variables → local → global → system) instead of reimplementing it.
 - Single static binary, no runtime dependencies beyond `git` itself.
 
@@ -224,6 +225,40 @@ kzgit check --domain company.com || exit 1
 ```
 
 You can also persist allowed domains in the KzGitUser config under a `rules.allowedDomains` array, so plain `kzgit check` enforces them without flags.
+
+### `kzgit stats`
+
+A GitHub-style commit contribution heatmap for a profile, right in your terminal — handy for seeing at a glance how your work vs. personal activity actually splits out.
+
+```bash
+kzgit stats                              # active identity, last 30 days, scanning the current directory
+kzgit stats --profile work               # a specific saved profile
+kzgit stats --days 90 --path ~/projects  # last 90 days, scanning ~/projects recursively
+kzgit stats --compare --path ~/projects  # every saved profile, side by side
+```
+
+```text
+Profile: work <john@company.com>
+Period:  last 30 days (2026-07-21 -> 2026-08-19)
+Total:   47 commits
+
+Lun    ░░ ▒▒ ░░ ██
+Mar ░░ ▓▓ ░░ ░░ ██
+Mer ░░ ░░ ▒▒ ▓▓ ░░
+Jeu ░░ ░░ ░░ ██ ░░
+Ven ▒▒ ░░ ▓▓ ░░
+Sam ░░ ░░ ░░ ░░
+Dim ░░ ██ ░░ ░░
+
+Less ░ ░ ▒ ▓ █ More
+```
+
+How it works, briefly:
+
+- `--path` (default: the current directory) is scanned recursively and concurrently for Git repositories — it stops descending as soon as it finds one, so it doesn't waste time crawling a large repo's own working tree.
+- Each repository is read with a **single** `git log` call across all authors, so `--compare` doesn't cost more Git invocations than a single profile does — the split by profile email happens afterward, in memory.
+- Intensity (`░ ▒ ▓ █`) is scaled relative to that profile's own busiest day in the window, not a fixed number, so a weekend hobbyist and a full-time team both get a heatmap that actually uses its full range.
+- Color is skipped automatically when output isn't a terminal (e.g. piped to a file) or when `NO_COLOR` is set.
 
 ### `kzgit update`
 
