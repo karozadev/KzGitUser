@@ -58,24 +58,35 @@ func ValidateEmail(email string) bool {
 	return emailRE.MatchString(email)
 }
 
+// homeDir returns the user's home directory. It checks the HOME environment
+// variable first (Unix convention, also used by tests), then falls back to
+// os.UserHomeDir (which uses USERPROFILE on Windows).
+func homeDir() string {
+	if home := os.Getenv("HOME"); home != "" {
+		return home
+	}
+	home, _ := os.UserHomeDir()
+	return home
+}
+
 // DefaultPath returns the primary config file location:
 // $XDG_CONFIG_HOME/kzgit/config.json, defaulting to ~/.config/kzgit/config.json.
 func DefaultPath() (string, error) {
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
 		return filepath.Join(xdg, "kzgit", "config.json"), nil
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
+	home := homeDir()
+	if home == "" {
+		return "", fmt.Errorf("cannot determine home directory")
 	}
 	return filepath.Join(home, ".config", "kzgit", "config.json"), nil
 }
 
 // FallbackPath returns the legacy single-file location: ~/.kzgit.json.
 func FallbackPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
+	home := homeDir()
+	if home == "" {
+		return "", fmt.Errorf("cannot determine home directory")
 	}
 	return filepath.Join(home, ".kzgit.json"), nil
 }

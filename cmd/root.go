@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/karoza/kz-git-user/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -15,10 +16,15 @@ func newRootCmd() *cobra.Command {
 		Short: "Visualize, verify and switch your Git identity",
 		Long: `KzGitUser (kzgit) helps you visualize, verify and easily switch the
 active Git identity (user.name and user.email) in a repository, so you
-never accidentally commit with the wrong professional or personal email.`,
+never accidentally commit with the wrong professional or personal email.
+
+Run 'kzgit' without arguments to launch the interactive TUI.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		RunE:          runWhoami,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app := tui.NewApp()
+			return app.Run()
+		},
 	}
 
 	root.AddCommand(newWhoamiCmd())
@@ -26,6 +32,7 @@ never accidentally commit with the wrong professional or personal email.`,
 	root.AddCommand(newProfilesCmd())
 	root.AddCommand(newSwitchCmd())
 	root.AddCommand(newCheckCmd())
+	root.AddCommand(newUICmd())
 
 	return root
 }
