@@ -2,9 +2,7 @@ package tui
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 
 	kzgit "github.com/karoza/kz-git-user/internal/git"
 	"github.com/rivo/tview"
@@ -58,7 +56,7 @@ func (d *dashboard) buildIdentitySection() *tview.Flex {
 	header := tview.NewTextView()
 	header.SetDynamicColors(true)
 	header.SetBackgroundColor(colorBackground)
-	fmt.Fprintf(header, "[#6C9EEB::b] Current Git Profile ")
+	_, _ = fmt.Fprintf(header, "[#6C9EEB::b] Current Git Profile ")
 	flex.AddItem(header, 1, 0, false)
 	flex.AddItem(newSeparator(), 1, 0, false)
 
@@ -90,7 +88,7 @@ func (d *dashboard) buildRepoSection() *tview.Flex {
 	header := tview.NewTextView()
 	header.SetDynamicColors(true)
 	header.SetBackgroundColor(colorBackground)
-	fmt.Fprintf(header, "[#6C9EEB::b] Repository ")
+	_, _ = fmt.Fprintf(header, "[#6C9EEB::b] Repository ")
 	flex.AddItem(header, 1, 0, false)
 	flex.AddItem(newSeparator(), 1, 0, false)
 
@@ -128,7 +126,7 @@ func (d *dashboard) buildLastCommitSection() *tview.Flex {
 	header := tview.NewTextView()
 	header.SetDynamicColors(true)
 	header.SetBackgroundColor(colorBackground)
-	fmt.Fprintf(header, "[#6C9EEB::b] Last Commit ")
+	_, _ = fmt.Fprintf(header, "[#6C9EEB::b] Last Commit ")
 	flex.AddItem(header, 1, 0, false)
 	flex.AddItem(newSeparator(), 1, 0, false)
 
@@ -165,7 +163,7 @@ func (d *dashboard) refresh() {
 	if emailVal == "" {
 		emailVal = "Not set"
 	}
-	sourceVal := string(identitySource(identity))
+	sourceVal := identitySource(identity)
 
 	d.fields["name"].SetText(fmt.Sprintf("[#6C7086]Name       : [white]%s", nameVal))
 	d.fields["email"].SetText(fmt.Sprintf("[#6C7086]Email      : [white]%s", emailVal))
@@ -213,15 +211,4 @@ func identitySource(identity *kzgit.Identity) string {
 		return string(identity.NameScope)
 	}
 	return string(kzgit.ScopeUnknown)
-}
-
-func shortenPath(path string) string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return path
-	}
-	if strings.HasPrefix(path, home) {
-		return "~" + path[len(home):]
-	}
-	return path
 }

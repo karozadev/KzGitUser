@@ -8,7 +8,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-// App is the main TUI application.
 type App struct {
 	tviewApp     *tview.Application
 	pages        *tview.Pages
@@ -19,7 +18,6 @@ type App struct {
 	currentPage  string
 }
 
-// NewApp creates a new TUI application.
 func NewApp() *App {
 	a := &App{
 		tviewApp: tview.NewApplication(),
@@ -272,7 +270,7 @@ func (a *App) showDeleteProfileDialog() {
 	modal.SetTextColor(colorForeground)
 	modal.SetBorderColor(colorError)
 
-	modal.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+	modal.SetDoneFunc(func(_ int, buttonLabel string) {
 		if buttonLabel == "Delete" {
 			a.profilesView.deleteProfile(profile)
 		}
@@ -296,7 +294,6 @@ func (a *App) stop() {
 	a.tviewApp.Stop()
 }
 
-// Run starts the TUI application.
 func (a *App) Run() error {
 	a.dashboard.refresh()
 	return a.tviewApp.Run()
