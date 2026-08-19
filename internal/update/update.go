@@ -30,8 +30,15 @@ var (
 	APIURL         = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", repoOwner, repoName)
 	ReleaseBaseURL = fmt.Sprintf("https://github.com/%s/%s/releases/download", repoOwner, repoName)
 
-	// HTTPClient performs all network requests made by this package.
+	// HTTPClient performs the small JSON API requests (checking the latest
+	// release), where a short timeout keeps a failed check from stalling
+	// routine commands.
 	HTTPClient = &http.Client{Timeout: 5 * time.Second}
+
+	// DownloadClient performs the larger release-archive downloads, which
+	// need a much longer timeout than the API check — a multi-megabyte
+	// binary can easily take longer than 5s on a slow connection.
+	DownloadClient = &http.Client{Timeout: 2 * time.Minute}
 )
 
 // Info describes the outcome of an update check.

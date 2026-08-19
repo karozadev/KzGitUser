@@ -11,16 +11,16 @@ import (
 )
 
 // isolatedEnv redirects the update-check cache to a fresh temp directory
-// and points APIURL/ReleaseBaseURL/HTTPClient at test doubles, restoring
-// the real values on cleanup.
+// and points APIURL/ReleaseBaseURL/HTTPClient/DownloadClient at test
+// doubles, restoring the real values on cleanup.
 func isolatedEnv(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, ".config"))
 
-	origAPI, origBase, origClient := APIURL, ReleaseBaseURL, HTTPClient
+	origAPI, origBase, origClient, origDownload := APIURL, ReleaseBaseURL, HTTPClient, DownloadClient
 	t.Cleanup(func() {
-		APIURL, ReleaseBaseURL, HTTPClient = origAPI, origBase, origClient
+		APIURL, ReleaseBaseURL, HTTPClient, DownloadClient = origAPI, origBase, origClient, origDownload
 	})
 }
 

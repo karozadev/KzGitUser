@@ -80,7 +80,7 @@ func downloadFile(url, dest string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := HTTPClient.Do(req)
+	resp, err := DownloadClient.Do(req)
 	if err != nil {
 		return err
 	}

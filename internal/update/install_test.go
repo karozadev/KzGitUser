@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 )
 
 func buildTarGz(t *testing.T, binaryName string, content []byte) []byte {
@@ -434,6 +435,33 @@ func TestDownloadFile(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "out.bin")
 	if err := downloadFile(srv.URL, dest); err != nil {
 		t.Fatalf("downloadFile: %v", err)
+	}
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatalf("reading downloaded file: %v", err)
+	}
+	if string(got) != string(content) {
+		t.Fatalf("unexpected content: %q", got)
+	}
+}
+
+func TestDownloadFile_UsesDownloadClientNotAPIClient(t *testing.T) {
+	isolatedEnv(t)
+	content := []byte("a slow but real download")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(50 * time.Millisecond)
+		_, _ = w.Write(content)
+	}))
+	t.Cleanup(srv.Close)
+
+	// HTTPClient (the small API-check client) has a timeout far shorter
+	// than the server's delay; DownloadClient does not. If downloadFile
+	// used HTTPClient, this would time out and fail.
+	HTTPClient = &http.Client{Timeout: 1 * time.Millisecond}
+
+	dest := filepath.Join(t.TempDir(), "out.bin")
+	if err := downloadFile(srv.URL, dest); err != nil {
+		t.Fatalf("downloadFile: %v (should use DownloadClient's longer timeout)", err)
 	}
 	got, err := os.ReadFile(dest)
 	if err != nil {
