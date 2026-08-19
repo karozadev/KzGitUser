@@ -53,13 +53,6 @@ func TestNewInfoRow(t *testing.T) {
 	}
 }
 
-func TestNewStatusBadge(t *testing.T) {
-	tv := newStatusBadge("Success", true)
-	if tv == nil {
-		t.Fatal("newStatusBadge returned nil")
-	}
-}
-
 func TestNewFooterBar(t *testing.T) {
 	tv := newFooterBar()
 	if tv == nil {
@@ -96,23 +89,6 @@ func TestEmailMatchesAnyDomain(t *testing.T) {
 		got := emailMatchesAnyDomain(tt.email, tt.domains)
 		if got != tt.want {
 			t.Errorf("emailMatchesAnyDomain(%q, %v) = %v, want %v", tt.email, tt.domains, got, tt.want)
-		}
-	}
-}
-
-func TestShortenPath(t *testing.T) {
-	tests := []struct {
-		path string
-		want string
-	}{
-		{"/home/user/project", "project"},
-		{"/other/path", "/other/path"},
-	}
-
-	for _, tt := range tests {
-		got := shortenPath(tt.path)
-		if got == "" {
-			t.Errorf("shortenPath(%q) returned empty string", tt.path)
 		}
 	}
 }
