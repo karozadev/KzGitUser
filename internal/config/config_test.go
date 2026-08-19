@@ -247,6 +247,56 @@ func TestLoad_FallsBackToLegacyPath(t *testing.T) {
 	}
 }
 
+func TestDefaultPath_NoHomeDir(t *testing.T) {
+	t.Setenv("HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	_ = os.Unsetenv("HOME")
+	_ = os.Unsetenv("XDG_CONFIG_HOME")
+
+	if _, err := DefaultPath(); err == nil {
+		t.Fatal("expected an error when no home directory can be determined")
+	}
+}
+
+func TestFallbackPath_NoHomeDir(t *testing.T) {
+	t.Setenv("HOME", "")
+	_ = os.Unsetenv("HOME")
+
+	if _, err := FallbackPath(); err == nil {
+		t.Fatal("expected an error when no home directory can be determined")
+	}
+}
+
+func TestSave_MkdirAllError(t *testing.T) {
+	dir := t.TempDir()
+	// Create a regular file where Save() needs to create a directory, so
+	// MkdirAll fails with "not a directory".
+	blocker := filepath.Join(dir, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+		t.Fatalf("seed blocker file: %v", err)
+	}
+
+	cfg := &Config{Profiles: map[string]Profile{}, path: filepath.Join(blocker, "sub", "config.json")}
+	if err := cfg.Save(); err == nil {
+		t.Fatal("expected Save to fail when its directory path is blocked by a file")
+	}
+}
+
+func TestSave_WriteFileError(t *testing.T) {
+	dir := t.TempDir()
+	// Make the target config path itself a directory, so the final
+	// os.WriteFile fails.
+	target := filepath.Join(dir, "config.json")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatalf("seed directory at config path: %v", err)
+	}
+
+	cfg := &Config{Profiles: map[string]Profile{}, path: target}
+	if err := cfg.Save(); err == nil {
+		t.Fatal("expected Save to fail when the config path is a directory")
+	}
+}
+
 func TestLoad_PrefersDefaultOverLegacy(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

@@ -70,6 +70,25 @@ func TestCheck_NoRulesConfigured_PassesOnEmailAlone(t *testing.T) {
 	}
 }
 
+func TestEmailMatchesAnyDomain(t *testing.T) {
+	cases := []struct {
+		email   string
+		domains []string
+		want    bool
+	}{
+		{"john@company.com", []string{"company.com"}, true},
+		{"john@COMPANY.com", []string{" company.com "}, true},
+		{"john@gmail.com", []string{"company.com"}, false},
+		{"no-at-sign", []string{"company.com"}, false},
+		{"trailing-at@", []string{"company.com"}, false},
+	}
+	for _, c := range cases {
+		if got := emailMatchesAnyDomain(c.email, c.domains); got != c.want {
+			t.Errorf("emailMatchesAnyDomain(%q, %v) = %v, want %v", c.email, c.domains, got, c.want)
+		}
+	}
+}
+
 func TestCheck_UsesConfiguredRules(t *testing.T) {
 	isolatedEnv(t)
 	dir := initRepoAndChdir(t)

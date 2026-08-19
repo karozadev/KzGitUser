@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // isolatedEnv redirects the update-check cache to a fresh temp directory
@@ -131,6 +133,115 @@ func TestCheck_NetworkError(t *testing.T) {
 
 	if _, err := Check("0.1.0"); err == nil {
 		t.Fatal("expected an error when the release API is unreachable/erroring")
+	}
+}
+
+func TestCachePath_NoHomeDir(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("HOME", "")
+	_ = os.Unsetenv("XDG_CONFIG_HOME")
+	_ = os.Unsetenv("HOME")
+
+	if _, err := cachePath(); err == nil {
+		t.Fatal("expected an error when no home directory can be determined")
+	}
+}
+
+func TestWriteCache_MkdirAllError(t *testing.T) {
+	isolatedEnv(t)
+	dir := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(dir, []byte("x"), 0o644); err != nil {
+		t.Fatalf("seed blocker file: %v", err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	if err := writeCache("0.1.0"); err == nil {
+		t.Fatal("expected an error when the cache directory can't be created")
+	}
+}
+
+func TestCachedLatest_CorruptedCache(t *testing.T) {
+	isolatedEnv(t)
+	path, err := cachePath()
+	if err != nil {
+		t.Fatalf("cachePath: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("not json"), 0o600); err != nil {
+		t.Fatalf("write corrupted cache: %v", err)
+	}
+
+	latest, err := cachedLatest()
+	if err != nil {
+		t.Fatalf("cachedLatest: %v", err)
+	}
+	if latest != "" {
+		t.Fatalf("expected empty result for a corrupted cache, got %q", latest)
+	}
+}
+
+func TestCachedLatest_Stale(t *testing.T) {
+	isolatedEnv(t)
+	if err := writeCache("0.5.0"); err != nil {
+		t.Fatalf("writeCache: %v", err)
+	}
+
+	// Backdate the cache file well past checkInterval.
+	path, err := cachePath()
+	if err != nil {
+		t.Fatalf("cachePath: %v", err)
+	}
+	data, err := json.Marshal(cacheData{CheckedAt: time.Now().Add(-48 * time.Hour), Latest: "0.5.0"})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("write stale cache: %v", err)
+	}
+
+	latest, err := cachedLatest()
+	if err != nil {
+		t.Fatalf("cachedLatest: %v", err)
+	}
+	if latest != "" {
+		t.Fatalf("expected a stale cache to be ignored, got %q", latest)
+	}
+}
+
+func TestFetchLatest_Unreachable(t *testing.T) {
+	isolatedEnv(t)
+	APIURL = "http://127.0.0.1:1/unreachable"
+	origClient := HTTPClient
+	HTTPClient = &http.Client{Timeout: 500 * time.Millisecond}
+	t.Cleanup(func() { HTTPClient = origClient })
+
+	if _, err := fetchLatest(); err == nil {
+		t.Fatal("expected an error when the release API is unreachable")
+	}
+}
+
+func TestFetchLatest_MalformedJSON(t *testing.T) {
+	isolatedEnv(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("not json"))
+	}))
+	t.Cleanup(srv.Close)
+	APIURL = srv.URL
+
+	if _, err := fetchLatest(); err == nil {
+		t.Fatal("expected an error for a malformed JSON response")
+	}
+}
+
+func TestFetchLatest_EmptyTagName(t *testing.T) {
+	isolatedEnv(t)
+	srv := newReleaseServer(t, "")
+	APIURL = srv.URL
+
+	if _, err := fetchLatest(); err == nil {
+		t.Fatal("expected an error for an empty tag_name")
 	}
 }
 

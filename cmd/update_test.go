@@ -101,6 +101,34 @@ func TestUpdate_YesFlag_InstallFails(t *testing.T) {
 	}
 }
 
+func TestEffectiveVersionAndLabel_NonDev(t *testing.T) {
+	orig := version
+	version = "0.1.0"
+	t.Cleanup(func() { version = orig })
+
+	if got := effectiveVersion(); got != "0.1.0" {
+		t.Fatalf("effectiveVersion() = %q, want %q", got, "0.1.0")
+	}
+	if got := versionLabel("0.1.0"); got != "v0.1.0" {
+		t.Fatalf("versionLabel() = %q, want %q", got, "v0.1.0")
+	}
+}
+
+func TestConfirm_NoInput(t *testing.T) {
+	root := newRootCmd()
+	root.SetIn(strings.NewReader(""))
+	var buf strings.Builder
+	root.SetOut(&buf)
+
+	confirmed, err := confirm(root, "Proceed?")
+	if err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+	if confirmed {
+		t.Fatal("expected confirm to default to false on EOF/no input")
+	}
+}
+
 func TestUpdate_NetworkError(t *testing.T) {
 	isolatedEnv(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

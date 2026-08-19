@@ -61,8 +61,10 @@ func Install(version string) error {
 var replaceExecutableFunc = replaceExecutable
 
 func archiveName(version string) (string, error) {
-	goos := runtime.GOOS
-	arch := runtime.GOARCH
+	return archiveNameFor(version, runtime.GOOS, runtime.GOARCH)
+}
+
+func archiveNameFor(version, goos, arch string) (string, error) {
 	switch goos {
 	case "linux", "darwin":
 		return fmt.Sprintf("%s_%s_%s_%s.tar.gz", binaryName, version, goos, arch), nil
@@ -134,8 +136,12 @@ func verifyChecksum(archivePath, checksumsPath, assetName string) error {
 }
 
 func extractBinary(archivePath, destDir string) (string, error) {
+	return extractBinaryFor(archivePath, destDir, runtime.GOOS)
+}
+
+func extractBinaryFor(archivePath, destDir, goos string) (string, error) {
 	binaryFile := binaryName
-	if runtime.GOOS == "windows" {
+	if goos == "windows" {
 		binaryFile += ".exe"
 	}
 	outPath := filepath.Join(destDir, binaryFile)

@@ -129,6 +129,28 @@ func TestInstall_FullPipeline(t *testing.T) {
 	}
 }
 
+func TestInstall_ChecksumsDownloadFails(t *testing.T) {
+	isolatedEnv(t)
+
+	assetName, err := archiveName("1.2.3")
+	if err != nil {
+		t.Fatalf("archiveName: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1.2.3/"+assetName, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(buildTarGz(t, binaryName, []byte("content")))
+	})
+	// No handler for checksums.txt: the mux's default 404 kicks in.
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	ReleaseBaseURL = srv.URL
+
+	if err := Install("1.2.3"); err == nil {
+		t.Fatal("expected Install to fail when checksums.txt can't be downloaded")
+	}
+}
+
 func TestInstall_ChecksumMismatchAborts(t *testing.T) {
 	isolatedEnv(t)
 
@@ -303,6 +325,83 @@ func TestExtractBinary_Zip(t *testing.T) {
 	}
 	if string(got) != string(content) {
 		t.Fatalf("unexpected extracted content: %q", got)
+	}
+}
+
+func TestArchiveNameFor_UnsupportedPlatform(t *testing.T) {
+	if _, err := archiveNameFor("1.0.0", "plan9", "amd64"); err == nil {
+		t.Fatal("expected an error for an unsupported platform")
+	}
+}
+
+func TestExtractBinaryFor_Windows(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("windows binary")
+	archiveBytes := buildZip(t, "kzgit.exe", content)
+	archivePath := filepath.Join(dir, "kzgit_0.1.0_windows_amd64.zip")
+	if err := os.WriteFile(archivePath, archiveBytes, 0o644); err != nil {
+		t.Fatalf("write archive: %v", err)
+	}
+
+	outPath, err := extractBinaryFor(archivePath, dir, "windows")
+	if err != nil {
+		t.Fatalf("extractBinaryFor: %v", err)
+	}
+	if filepath.Base(outPath) != "kzgit.exe" {
+		t.Fatalf("expected kzgit.exe, got %s", outPath)
+	}
+	got, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("reading extracted binary: %v", err)
+	}
+	if string(got) != string(content) {
+		t.Fatalf("unexpected content: %q", got)
+	}
+}
+
+func TestExtractFromTarGz_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	archiveBytes := buildTarGz(t, "some-other-file", []byte("x"))
+	archivePath := filepath.Join(dir, "archive.tar.gz")
+	if err := os.WriteFile(archivePath, archiveBytes, 0o644); err != nil {
+		t.Fatalf("write archive: %v", err)
+	}
+
+	if err := extractFromTarGz(archivePath, binaryName, filepath.Join(dir, "out")); err == nil {
+		t.Fatal("expected an error when the wanted file isn't in the tar.gz archive")
+	}
+}
+
+func TestExtractFromZip_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	archiveBytes := buildZip(t, "some-other-file", []byte("x"))
+	archivePath := filepath.Join(dir, "archive.zip")
+	if err := os.WriteFile(archivePath, archiveBytes, 0o644); err != nil {
+		t.Fatalf("write archive: %v", err)
+	}
+
+	if err := extractFromZip(archivePath, binaryName, filepath.Join(dir, "out")); err == nil {
+		t.Fatal("expected an error when the wanted file isn't in the zip archive")
+	}
+}
+
+func TestWriteExtracted_OpenFileError(t *testing.T) {
+	err := writeExtracted(filepath.Join(t.TempDir(), "nonexistent-dir", "out"), bytes.NewReader([]byte("x")))
+	if err == nil {
+		t.Fatal("expected an error when the output path's directory doesn't exist")
+	}
+}
+
+func TestCopyReplace_StagedFileError(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	if err := os.WriteFile(src, []byte("content"), 0o644); err != nil {
+		t.Fatalf("write src: %v", err)
+	}
+
+	dest := filepath.Join(dir, "nonexistent-dir", "dest")
+	if err := copyReplace(src, dest); err == nil {
+		t.Fatal("expected an error when the staged file's directory doesn't exist")
 	}
 }
 

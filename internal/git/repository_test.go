@@ -28,6 +28,68 @@ func TestOpenRepository_Success(t *testing.T) {
 	}
 }
 
+func TestOpenRepository_EmptyDirUsesCwd(t *testing.T) {
+	isolatedEnv(t)
+	dir := initRepo(t)
+	t.Chdir(dir)
+
+	repo, err := OpenRepository("")
+	if err != nil {
+		t.Fatalf("OpenRepository: %v", err)
+	}
+	if repo.Path == "" {
+		t.Fatal("expected non-empty repository path")
+	}
+}
+
+// failingRunner fails on the callN'th call to run (1-indexed), succeeding
+// with empty output on every other call.
+type failingRunner struct {
+	failOn int
+	calls  int
+}
+
+func (f *failingRunner) run(_ string, _ []string, _ ...string) (string, error) {
+	f.calls++
+	if f.calls == f.failOn {
+		return "", errors.New("simulated failure")
+	}
+	return "", nil
+}
+
+func TestBranch_DetachedHEAD(t *testing.T) {
+	isolatedEnv(t)
+	dir := initRepo(t)
+	commitFile(t, dir, "file.txt", "Author", "author@example.com")
+	runGit(t, dir, "checkout", "-q", "--detach", "HEAD")
+
+	repo, err := OpenRepository(dir)
+	if err != nil {
+		t.Fatalf("OpenRepository: %v", err)
+	}
+	branch, err := repo.Branch()
+	if err != nil {
+		t.Fatalf("Branch: %v", err)
+	}
+	if branch != "" {
+		t.Fatalf("expected empty branch for detached HEAD, got %q", branch)
+	}
+}
+
+func TestBranch_CommandError(t *testing.T) {
+	repo := &Repository{Path: "/nonexistent", r: &failingRunner{failOn: 1}}
+	if _, err := repo.Branch(); err == nil {
+		t.Fatal("expected an error when the underlying git command fails")
+	}
+}
+
+func TestSetLocalIdentity_SecondCallFails(t *testing.T) {
+	repo := &Repository{Path: "/nonexistent", r: &failingRunner{failOn: 2}}
+	if err := repo.SetLocalIdentity("Name", "email@example.com"); err == nil {
+		t.Fatal("expected an error when setting user.email fails")
+	}
+}
+
 func TestBranch(t *testing.T) {
 	isolatedEnv(t)
 	dir := initRepo(t)

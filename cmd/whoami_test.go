@@ -57,6 +57,24 @@ func TestWhoamiReport_FullIdentity(t *testing.T) {
 	}
 }
 
+func TestWhoamiReport_NameOnlyNoEmail(t *testing.T) {
+	isolatedEnv(t)
+	dir := t.TempDir()
+	run(t, dir, "init", "-q")
+	run(t, dir, "config", "--local", "user.name", "Jane Doe")
+
+	out, err := whoamiReport(dir)
+	if err != nil {
+		t.Fatalf("whoamiReport: %v", err)
+	}
+	if !strings.Contains(out, "Name   : Jane Doe") {
+		t.Fatalf("expected name to be set, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Source : Local Repository") {
+		t.Fatalf("expected source to fall back to the name's scope, got:\n%s", out)
+	}
+}
+
 func TestWhoamiCommand_RootAlias(t *testing.T) {
 	isolatedEnv(t)
 	dir := initRepoAndChdir(t)
