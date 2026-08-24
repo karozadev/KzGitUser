@@ -9,6 +9,7 @@
 [![Tests](https://github.com/karozadev/KzGitUser/actions/workflows/ci.yml/badge.svg?event=push)](https://github.com/karozadev/KzGitUser/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-%E2%89%A580%25-brightgreen)](https://github.com/karozadev/KzGitUser/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/karozadev/KzGitUser)](https://github.com/karozadev/KzGitUser/releases)
+[![Downloads](https://img.shields.io/github/downloads/karozadev/KzGitUser/total)](https://github.com/karozadev/KzGitUser/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **KzGitUser** (by Karoza) is a lightweight CLI that helps you **visualize, verify and switch** your active Git identity (`user.name` / `user.email`) so you never accidentally commit to a professional repository with your personal email — or vice versa.
