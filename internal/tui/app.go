@@ -48,14 +48,48 @@ func (a *App) buildLayout() *tview.Flex {
 	return root
 }
 
+// isEditing reports whether the focused primitive is a text-entry widget.
+// While the user is typing into one (e.g. the add-profile form or the
+// command bar), single-key shortcuts must not be intercepted — otherwise a
+// name or command containing 'a', 'q', 'j', … would trigger navigation
+// instead of being typed.
+func (a *App) isEditing() bool {
+	// A modal dialog (e.g. the add-profile form) owns the keyboard while
+	// it is open, including when a button rather than a field has focus.
+	if a.pages.HasPage("dialog") {
+		return true
+	}
+	switch a.tviewApp.GetFocus().(type) {
+	case *tview.InputField, *tview.TextArea:
+		return true
+	default:
+		return false
+	}
+}
+
 func (a *App) handleInput(event *tcell.EventKey) *tcell.EventKey {
+	editing := a.isEditing()
+
 	switch event.Key() {
 	case tcell.KeyEscape:
+		if a.pages.HasPage("dialog") {
+			a.pages.RemovePage("dialog")
+			a.showPage("profiles")
+			return nil
+		}
 		a.showPage("dashboard")
 		return nil
 	case tcell.KeyTab:
+		if editing {
+			return event
+		}
 		a.cyclePages()
 		return nil
+	}
+
+	// Let text-entry widgets receive every other key untouched.
+	if editing {
+		return event
 	}
 
 	switch event.Rune() {

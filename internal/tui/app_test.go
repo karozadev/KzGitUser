@@ -181,13 +181,46 @@ func TestHandleInput_NumberKeys(t *testing.T) {
 	if app.currentPage != "profiles" {
 		t.Fatalf("expected '2' to switch to profiles, got %s", app.currentPage)
 	}
+	app.handleInput(runeEvent('1'))
+	if app.currentPage != "dashboard" {
+		t.Fatalf("expected '1' to switch to dashboard, got %s", app.currentPage)
+	}
 	app.handleInput(runeEvent('3'))
 	if app.currentPage != "commands" {
 		t.Fatalf("expected '3' to switch to commands, got %s", app.currentPage)
 	}
-	app.handleInput(runeEvent('1'))
+}
+
+// TestHandleInput_ShortcutsSuppressedWhileEditing guards the fix for a bug
+// where typing into a text field (the command bar, the add-profile form)
+// fired single-key navigation shortcuts whenever the text contained a
+// character such as 'a' or 'q'.
+func TestHandleInput_ShortcutsSuppressedWhileEditing(t *testing.T) {
+	isolatedEnv(t)
+	app := newTestApp()
+
+	// Land on the commands page; focus is on the command InputField.
+	app.showPage("commands")
+	if !app.isEditing() {
+		t.Fatal("expected the command bar to count as an editing context")
+	}
+
+	for _, r := range []rune{'q', 'a', 'd', 'p', 'j', 'k', '1', '2', '3', '?'} {
+		got := app.handleInput(runeEvent(r))
+		if got == nil {
+			t.Fatalf("expected %q to pass through untouched while editing", r)
+		}
+		if app.currentPage != "commands" {
+			t.Fatalf("expected %q not to navigate while editing, landed on %s", r, app.currentPage)
+		}
+	}
+
+	// Escape still works as the way out of an editing context.
+	if got := app.handleInput(keyEvent(tcell.KeyEscape)); got != nil {
+		t.Fatal("expected Escape to still be consumed while editing")
+	}
 	if app.currentPage != "dashboard" {
-		t.Fatalf("expected '1' to switch to dashboard, got %s", app.currentPage)
+		t.Fatalf("expected Escape to return to dashboard, got %s", app.currentPage)
 	}
 }
 
@@ -203,24 +236,42 @@ func TestHandleInput_PKeyOnlyFromDashboard(t *testing.T) {
 
 func TestHandleInput_AddDeleteRefreshOnlyOnProfilesPage(t *testing.T) {
 	isolatedEnv(t)
+	// 'r' on the profiles page refreshes without panicking.
 	app := newTestApp()
 	app.showPage("profiles")
+	app.handleInput(runeEvent('r'))
 
-	app.handleInput(runeEvent('a'))
-	if !app.pages.HasPage("dialog") {
+	// 'd' with nothing selected reports via the footer instead of opening
+	// the confirmation dialog.
+	app2 := newTestApp()
+	app2.showPage("profiles")
+	app2.handleInput(runeEvent('d'))
+	if !strings.Contains(app2.footer.GetText(true), "No profile selected") {
+		t.Fatalf("expected 'no profile selected' after 'd' with nothing to delete, got: %s", app2.footer.GetText(true))
+	}
+
+	// 'a' on the profiles page opens the add-profile dialog.
+	app3 := newTestApp()
+	app3.showPage("profiles")
+	app3.handleInput(runeEvent('a'))
+	if !app3.pages.HasPage("dialog") {
 		t.Fatal("expected 'a' on profiles page to open the add-profile dialog")
 	}
-	app.pages.RemovePage("dialog")
 
-	app.handleInput(runeEvent('r'))
-	// Should not panic; refresh() was called.
-
-	app.handleInput(runeEvent('d'))
-	// No profile selected, so showDeleteProfileDialog shows a result
-	// message (via App.showResult, which targets the footer) instead of
-	// opening the confirmation dialog.
-	if !strings.Contains(app.footer.GetText(true), "No profile selected") {
-		t.Fatalf("expected 'no profile selected' after 'd' with nothing to delete, got: %s", app.footer.GetText(true))
+	// While that dialog is open, shortcuts are suppressed regardless of
+	// which widget inside it has focus, and Escape closes it cleanly.
+	if !app3.isEditing() {
+		t.Fatal("expected an open dialog to suppress shortcuts")
+	}
+	if got := app3.handleInput(runeEvent('q')); got == nil {
+		t.Fatal("expected 'q' to pass through while the dialog is open")
+	}
+	app3.handleInput(keyEvent(tcell.KeyEscape))
+	if app3.pages.HasPage("dialog") {
+		t.Fatal("expected Escape to remove the dialog page")
+	}
+	if app3.currentPage != "profiles" {
+		t.Fatalf("expected Escape from the add dialog to return to profiles, got %s", app3.currentPage)
 	}
 }
 
